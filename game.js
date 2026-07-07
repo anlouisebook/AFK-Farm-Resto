@@ -1,48 +1,97 @@
-'use strict';
-const KEY='hh-afk-v1', CAP=28800;
-const C={lettuce:['Lettuce',3,12,5],tomato:['Tomato',5,22,8],corn:['Corn',8,36,12],carrot:['Carrot',10,52,15],potato:['Potato',14,75,21]};
-const R={salad:['Garden Salad',{lettuce:1,tomato:1},18],soup:['Corn Soup',{corn:1,carrot:1},28],plate:['Tomato Plate',{tomato:2,carrot:1},31],stew:['Harvest Stew',{carrot:1,corn:1,potato:1},48],feast:['Farm Feast',{lettuce:1,tomato:1,corn:1,carrot:1,potato:1},82]};
-const W={solo:['Work Solo',1,20,0],mira:['Mira · Server',2,15,1],bram:['Bram · Cook',3,12,2]};
-const fresh=()=>({coins:120,xp:0,level:1,energy:25,rep:50,favor:0,rel:{mira:0,bram:0},stats:{farming:1,cooking:1,charisma:1,stamina:1},sx:{farming:0,cooking:0,charisma:0,stamina:0},crops:Object.fromEntries(Object.keys(C).map(k=>[k,0])),dishes:Object.fromEntries(Object.keys(R).map(k=>[k,0])),plots:Array.from({length:6},()=>({crop:null,at:0,status:'empty'})),pick:'lettuce',menu:['salad'],staff:'solo',progress:0,served:0,floor:1,combat:null,flags:{community:null,supplier:null,debt:false},logs:[['You inherited a tiny farm and restaurant.','good']],seen:Date.now(),tick:Date.now()});
-let s=load(),toastTimer;
-function load(){try{return {...fresh(),...JSON.parse(localStorage.getItem(KEY))}}catch{return fresh()}}
-function save(){s.seen=Date.now();localStorage.setItem(KEY,JSON.stringify(s))}
-const maxE=()=>20+s.stats.stamina*5,need=()=>80+s.level*20,skNeed=k=>20+s.stats[k]*15,cap=(v,a,b)=>Math.max(a,Math.min(b,v));
-function log(t,tone=''){s.logs.unshift([t,tone]);s.logs=s.logs.slice(0,40)}
-function toast(t){let e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove('show'),2200)}
-function xp(n){s.xp+=n;while(s.xp>=need()){s.xp-=need();s.level++;s.energy=maxE();log(`Level ${s.level} reached!`,'good');toast(`Level ${s.level}!`)}}
-function skill(k,n){s.sx[k]+=n;while(s.sx[k]>=skNeed(k)){s.sx[k]-=skNeed(k);s.stats[k]++;if(k==='stamina')s.energy=maxE();log(`${k} increased to ${s.stats[k]}.`,'good')}}
-function energy(n){if(s.energy<n){toast('Not enough Energy.');return false}s.energy-=n;return true}
-function seed(k){let m=s.flags.supplier==='bulk'?.8:s.flags.supplier==='local'?1.1:1;return Math.max(1,Math.round(C[k][1]*m))}
-function plant(i){let p=s.plots[i],k=s.pick,c=seed(k);if(p.status!=='empty')return;if(s.coins<c)return toast('Not enough coins.');if(!energy(1))return;s.coins-=c;Object.assign(p,{crop:k,at:Date.now(),status:'growing'});skill('farming',1);done()}
-function grow(now=Date.now()){s.plots.forEach(p=>{if(!p.crop)return;let age=(now-p.at)/1000,g=C[p.crop][2],w=g*(s.flags.supplier==='bulk'?1.4:2);p.status=age>=g+w?'withered':age>=g?'ready':'growing'})}
-function harvest(i){let p=s.plots[i];if(p.status==='withered'){s.rep=cap(s.rep-1,0,100);log(`${C[p.crop][0]} withered. Reputation -1.`,'bad');Object.assign(p,{crop:null,at:0,status:'empty'});return done()}if(p.status!=='ready')return;let n=1+Math.floor(s.stats.farming/3);s.crops[p.crop]+=n;xp(6);skill('farming',4);log(`Harvested ${n} ${C[p.crop][0]}.`,'good');Object.assign(p,{crop:null,at:0,status:'empty'});done()}
-function sell(k){if(!s.crops[k])return;s.crops[k]--;s.coins+=C[k][3];done()}
-const has=req=>Object.entries(req).every(([k,n])=>s.crops[k]>=n);
-function cook(k){let r=R[k];if(!has(r[1]))return toast('Missing ingredients.');if(!energy(1))return;Object.entries(r[1]).forEach(([a,n])=>s.crops[a]-=n);if(Math.random()<Math.min(.96,.68+s.stats.cooking*.045)){s.dishes[k]++;xp(8);skill('cooking',5);log(`Cooked ${r[0]}.`,'good')}else{s.rep=cap(s.rep-1,0,100);skill('cooking',2);log(`${r[0]} failed. Ingredients lost.`,'bad')}done()}
-function menu(k){s.menu=s.menu.includes(k)?s.menu.filter(x=>x!==k):s.menu.length<3?[...s.menu,k]:s.menu;if(!s.menu.includes(k)&&document.activeElement?.dataset?.menu===k)toast('Menu limit is 3.');s.progress=0;done()}
-function staff(k){if(s.level<W[k][1])return toast(`Unlocks at level ${W[k][1]}.`);s.staff=k;s.progress=0;done()}
-function serve(quiet=false){let a=s.menu.filter(k=>s.dishes[k]>0);if(!a.length)return null;let k=a[Math.floor(Math.random()*a.length)],r=R[k],w=W[s.staff],keep=s.staff==='bram'&&Math.random()<.12;if(!keep)s.dishes[k]--;s.coins+=r[2]-w[3];s.served++;let happy=Math.random()<Math.min(.97,.66+s.stats.charisma*.035+s.rep/500+(s.staff==='mira'?.06:0));if(happy){s.rep=cap(s.rep+1,0,100);skill('charisma',2);xp(4)}else{s.rep=cap(s.rep-2,0,100);if(!quiet)log('An unhappy customer left. Reputation -2.','bad')}if(s.staff==='mira')s.rel.mira+=happy?.2:-.1;if(s.staff==='bram')s.rel.bram+=happy?.15:-.1;return{happy,coin:r[2]-w[3]}}
-function enter(){if(s.combat||!energy(6))return;let hp=18+s.level*4+s.stats.stamina*2,eh=8+s.floor*6;s.combat={hp,max:hp,eh,emax:eh,name:s.floor===3?'Cellar Warden':s.floor===2?'Root Goblin':'Moss Slime'};skill('stamina',2);done()}
-function strike(){let c=s.combat;if(!c)return;c.eh-=2+s.level+Math.floor(s.stats.farming/2)+Math.floor(Math.random()*4);if(c.eh<=0){let n=12+s.floor*9;s.coins+=n;xp(14+s.floor*5);log(`Cleared floor ${s.floor}. +${n} coins.`,'good');s.floor=s.floor===3?1:s.floor+1;s.combat=null;toast('Victory!');return done()}c.hp-=1+s.floor+Math.floor(Math.random()*4);if(c.hp<=0){let n=Math.min(Math.max(0,s.coins+50),15+s.floor*7);s.coins-=n;s.rep=cap(s.rep-3,0,100);s.floor=1;s.combat=null;log(`Dungeon defeat. Lost ${n} coins and 3 reputation.`,'bad')}done()}
-function flee(){if(!s.combat)return;s.combat=null;s.rep=cap(s.rep-1,0,100);log('Fled the dungeon. Reputation -1.','bad');done()}
-function choice(){if(s.level>=2&&!s.flags.community)return['Community Supper','Mira asks for support. This choice is permanent.',[['Donate 60 coins',s.coins<60,()=>{s.coins-=60;s.favor+=2;s.rel.mira+=3;s.flags.community='donated';log('Funded the supper. Town +2, Mira +3.','good')}],['Decline',false,()=>{s.rep=cap(s.rep-2,0,100);s.rel.mira-=2;s.flags.community='declined';log('Declined the supper. Reputation -2, Mira -2.','bad')}]]];if(s.served>=10&&!s.flags.supplier)return['Seed Supplier','Choose one permanent contract.',[['Local: +10% seed cost',false,()=>{s.flags.supplier='local';s.favor++;s.rel.bram+=2;log('Local supplier chosen.','good')}],['Bulk: -20% seed cost',false,()=>{s.flags.supplier='bulk';s.favor--;s.rel.bram--;log('Bulk seeds are cheaper but wither sooner.','bad')}]]];return null}
-function choose(i){let e=choice();if(!e)return;e[2][i][2]();done()}
-function consequence(){if(!s.flags.debt&&s.coins<=-50){s.flags.debt=true;s.rep=cap(s.rep-10,0,100);s.menu=[];log('Debt crisis: service stopped, reputation -10.','bad')}}
-function offline(){let sec=Math.min(CAP,Math.max(0,(Date.now()-s.seen)/1000));if(sec<15)return;grow();s.energy=Math.min(maxE(),s.energy+sec/30);let n=Math.min(3000,Math.floor((s.progress+sec)/W[s.staff][2])),served=0,earned=0,bad=0;for(let i=0;i<n;i++){let r=serve(true);if(!r)break;served++;earned+=r.coin;if(!r.happy)bad++}s.progress=(s.progress+sec)%W[s.staff][2];save();if(served||sec>=60){$('offlineSummary').innerHTML=`<ul><li>Away ${duration(sec)} (8h cap)</li><li>${served} customers served</li><li>${earned} coins earned</li><li>${bad} unhappy customers</li><li>Farm growth and Energy recovery applied</li></ul>`;$('offlineModal').classList.remove('hidden')}}
-function duration(n){let h=Math.floor(n/3600),m=Math.floor(n%3600/60);return h?`${h}h ${m}m`:m?`${m}m`:`${Math.floor(n)}s`}
-function tick(){let now=Date.now(),dt=Math.min(5,(now-s.tick)/1000);s.tick=now;grow(now);s.energy=Math.min(maxE(),s.energy+dt/30);s.progress+=dt;if(s.progress>=W[s.staff][2]){s.progress%=W[s.staff][2];serve()}consequence();save();render()}
-const $=id=>document.getElementById(id),req=o=>Object.entries(o).map(([k,n])=>`${n} ${C[k][0]}`).join(' + ');
-function render(){hud();farmUI();kitchenUI();restoUI();dungeonUI();townUI();skillsUI();mapUI()}
-function hud(){$('levelValue').textContent=s.level;$('xpValue').textContent=`${Math.floor(s.xp)} / ${need()}`;$('coinsValue').textContent=Math.floor(s.coins);$('energyValue').textContent=`${Math.floor(s.energy)} / ${maxE()}`;$('repValue').textContent=Math.floor(s.rep);$('favorValue').textContent=s.favor;$('miraValue').textContent=Math.round(s.rel.mira);$('bramValue').textContent=Math.round(s.rel.bram)}
-function farmUI(){$('cropPicker').innerHTML=Object.entries(C).map(([k,v])=>`<button class="crop-chip ${s.pick===k?'selected':''}" data-crop="${k}"><strong>${v[0]}</strong><small>${seed(k)}c · ${v[2]}s</small></button>`).join('');document.querySelectorAll('[data-crop]').forEach(b=>b.onclick=()=>{s.pick=b.dataset.crop;done()});let now=Date.now();$('plotGrid').innerHTML=s.plots.map((p,i)=>{if(!p.crop)return`<div class="plot"><strong>Plot ${i+1}</strong><small>Empty soil</small><button data-plant="${i}">Plant ${C[s.pick][0]}</button></div>`;let v=C[p.crop],age=(now-p.at)/1000,pct=p.status==='growing'?Math.min(100,age/v[2]*100):100,label=p.status==='ready'?'Ready!':p.status==='withered'?'Withered':`${Math.max(0,Math.ceil(v[2]-age))}s left`;return`<div class="plot ${p.status}"><strong>${v[0]}</strong><small>${label}</small><div class="progress"><i style="width:${pct}%"></i></div><button data-harvest="${i}" ${p.status==='growing'?'disabled':''}>${p.status==='withered'?'Clear':'Harvest'}</button></div>`}).join('');document.querySelectorAll('[data-plant]').forEach(b=>b.onclick=()=>plant(+b.dataset.plant));document.querySelectorAll('[data-harvest]').forEach(b=>b.onclick=()=>harvest(+b.dataset.harvest));$('cropInventory').innerHTML=Object.entries(C).map(([k,v])=>`<div class="inventory-item"><strong>${v[0]}: ${s.crops[k]}</strong><small>Market ${v[3]}c</small><button data-sell="${k}" ${s.crops[k]?'':'disabled'}>Sell 1</button></div>`).join('');document.querySelectorAll('[data-sell]').forEach(b=>b.onclick=()=>sell(b.dataset.sell))}
-function kitchenUI(){$('recipeGrid').innerHTML=Object.entries(R).map(([k,v])=>`<article class="card"><h3>${v[0]}</h3><small>${req(v[1])}</small><p>Price <span class="price">${v[2]}c</span> · Success ${Math.round(Math.min(.96,.68+s.stats.cooking*.045)*100)}%</p><strong>Stock: ${s.dishes[k]}</strong><button data-cook="${k}" ${has(v[1])?'':'disabled'}>Cook · 1 Energy</button></article>`).join('');document.querySelectorAll('[data-cook]').forEach(b=>b.onclick=()=>cook(b.dataset.cook))}
-function restoUI(){$('menuCount').textContent=`${s.menu.length} / 3`;$('menuGrid').innerHTML=Object.entries(R).map(([k,v])=>`<label class="menu-item ${s.menu.includes(k)?'selected':''}"><input type="checkbox" data-menu="${k}" ${s.menu.includes(k)?'checked':''}><span>${v[0]}<br><small>${s.dishes[k]} ready · ${v[2]}c</small></span></label>`).join('');document.querySelectorAll('[data-menu]').forEach(b=>b.onchange=()=>menu(b.dataset.menu));$('staffGrid').innerHTML=Object.entries(W).map(([k,v])=>`<article class="staff-card ${s.staff===k?'selected':''}"><h3>${v[0]}</h3><small>${v[2]}s/customer · ${v[3]}c wage</small><p>${k==='solo'?'No wage.':k==='mira'?'Better customer mood.':'Chance to preserve a dish.'}</p><button data-staff="${k}" ${s.level<v[1]?'disabled':''}>${s.level<v[1]?`Unlock Lv ${v[1]}`:'Select'}</button></article>`).join('');document.querySelectorAll('[data-staff]').forEach(b=>b.onclick=()=>staff(b.dataset.staff));let ok=s.menu.some(k=>s.dishes[k]);$('serviceTimer').textContent=ok?`${Math.max(0,Math.ceil(W[s.staff][2]-s.progress))}s`:'Paused';$('servedValue').textContent=s.served;$('debtValue').textContent=s.coins<0?`${Math.abs(Math.floor(s.coins))}c debt`:'Stable'}
-function dungeonUI(){$('floorValue').textContent=s.floor;$('dungeonIdle').classList.toggle('hidden',!!s.combat);$('combatStage').classList.toggle('hidden',!s.combat);if(s.combat){$('playerHp').textContent=`${Math.max(0,s.combat.hp)} / ${s.combat.max} HP`;$('enemyHp').textContent=`${Math.max(0,s.combat.eh)} / ${s.combat.emax} HP`;$('enemyName').textContent=s.combat.name}}
-function townUI(){let e=choice();$('choiceEvent').innerHTML=e?`<h3>${e[0]}</h3><p>${e[1]}</p><div class="event-choice">${e[2].map((o,i)=>`<button class="${i?'':'primary'}" data-choice="${i}" ${o[1]?'disabled':''}>${o[0]}</button>`).join('')}</div>`:`<h3>No urgent town choices</h3><p>Community ${s.flags.community||'pending'} · Supplier ${s.flags.supplier||'pending'}.</p>`;document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>choose(+b.dataset.choice));$('eventLog').innerHTML=s.logs.map(x=>`<div class="log-entry ${x[1]}">${x[0]}</div>`).join('')}
-function skillsUI(){$('skillGrid').innerHTML=Object.keys(s.stats).map(k=>`<div class="skill-card"><strong>${k[0].toUpperCase()+k.slice(1)} ${s.stats[k]}</strong><div class="progress"><i style="width:${Math.min(100,s.sx[k]/skNeed(k)*100)}%"></i></div><small>${Math.floor(s.sx[k])} / ${skNeed(k)} skill XP</small></div>`).join('')}
-function mapUI(){let c=$('worldMap'),x=c.getContext('2d'),S=32,g=['#759b57','#7da35d'];for(let y=0;y<10;y++)for(let i=0;i<16;i++){x.fillStyle=g[(i+y)%2];x.fillRect(i*S,y*S,S,S)}x.fillStyle='#c3a879';for(let i=0;i<16;i++)x.fillRect(i*S,5*S,S,S);for(let y=2;y<9;y++)x.fillRect(8*S,y*S,S,S);x.fillStyle='#5798a9';x.fillRect(12*S,S,3*S,3*S);for(let i=0;i<6;i++){let a=1+i%3,b=1+Math.floor(i/3);x.fillStyle='#6c4e32';x.fillRect(a*S+3,b*S+3,S-6,S-6)}x.fillStyle='#8c493f';x.fillRect(9*S,S,3*S,3*S);x.fillStyle='#e0bd72';x.fillRect(9*S+8,S+16,3*S-16,2*S+12);x.fillStyle='#3b4039';x.fillRect(2*S,7*S,3*S,2*S);x.fillStyle='#171b18';x.beginPath();x.arc(3.5*S,8.5*S,24,Math.PI,0);x.fill();[[6,1],[6,3],[14,7],[12,8],[0,8]].forEach(([a,b])=>{x.fillStyle='#385b3d';x.fillRect(a*S+5,b*S+5,22,22);x.fillStyle='#654a2e';x.fillRect(a*S+14,b*S+23,6,9)});let a=7*S+8,b=5*S+5;x.fillStyle='#6b4b30';x.fillRect(a+6,b,12,8);x.fillStyle='#e0b183';x.fillRect(a+5,b+8,14,8);x.fillStyle='#d9e8ae';x.fillRect(a+3,b+16,18,9)}
-function done(){save();render()}
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));t.classList.add('active');$(`${t.dataset.tab}Panel`).classList.add('active')});
-$('enterDungeon').onclick=enter;$('attackBtn').onclick=strike;$('fleeBtn').onclick=flee;$('closeOffline').onclick=()=>$('offlineModal').classList.add('hidden');$('resetSave').onclick=()=>{if(confirm('Reset all progress?')){localStorage.removeItem(KEY);s=fresh();done()}};
-offline();render();setInterval(tick,1000);addEventListener('beforeunload',save);
+function uiEl(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+function uiClear(id) { const node = $(id); node.replaceChildren(); return node; }
+function uiButton(text, fn, disabled) {
+  const b = uiEl('button', text);
+  b.disabled = !!disabled;
+  b.onclick = fn;
+  return b;
+}
+function hud() {
+  $('levelValue').textContent = s.level;
+  $('xpValue').textContent = Math.floor(s.xp) + ' / ' + need();
+  $('coinsValue').textContent = Math.floor(s.coins);
+  $('energyValue').textContent = Math.floor(s.energy) + ' / ' + maxE();
+  $('repValue').textContent = Math.floor(s.rep);
+  $('favorValue').textContent = s.favor;
+  $('miraValue').textContent = Math.round(s.rel.mira);
+  $('bramValue').textContent = Math.round(s.rel.bram);
+}
+function farmUI() {
+  const picker = uiClear('cropPicker');
+  Object.entries(C).forEach(([k, v]) => {
+    const b = uiButton(v[0] + ' · ' + seed(k) + 'c · ' + v[2] + 's', () => { s.pick = k; done(); });
+    b.className = 'crop-chip' + (s.pick === k ? ' selected' : '');
+    picker.append(b);
+  });
+  const plots = uiClear('plotGrid');
+  s.plots.forEach((p, i) => {
+    const card = uiEl('div', null, 'plot ' + p.status);
+    if (!p.crop) {
+      card.append(uiEl('strong', 'Plot ' + (i + 1)), uiEl('small', 'Empty soil'), uiButton('Plant ' + C[s.pick][0], () => plant(i)));
+    } else {
+      const v = C[p.crop];
+      const age = (Date.now() - p.at) / 1000;
+      const label = p.status === 'ready' ? 'Ready!' : p.status === 'withered' ? 'Withered' : Math.max(0, Math.ceil(v[2] - age)) + 's left';
+      card.append(uiEl('strong', v[0]), uiEl('small', label), uiButton(p.status === 'withered' ? 'Clear' : 'Harvest', () => harvest(i), p.status === 'growing'));
+    }
+    plots.append(card);
+  });
+  const inv = uiClear('cropInventory');
+  Object.entries(C).forEach(([k, v]) => {
+    const card = uiEl('div', null, 'inventory-item');
+    card.append(uiEl('strong', v[0] + ': ' + s.crops[k]), uiEl('small', 'Market ' + v[3] + 'c'), uiButton('Sell 1', () => sell(k), !s.crops[k]));
+    inv.append(card);
+  });
+}
+function builderUI() {
+  const box = uiClear('customIngredientPicker');
+  Object.entries(C).forEach(([k, v]) => {
+    const row = uiEl('label', null, 'ingredient-row');
+    const check = uiEl('input'); check.type = 'checkbox'; check.checked = !!recipeDraft.ingredients[k];
+    const qty = uiEl('select'); qty.disabled = !check.checked;
+    [1,2,3].forEach(n => { const o = uiEl('option', '×' + n); o.value = n; o.selected = (recipeDraft.ingredients[k] || 1) === n; qty.append(o); });
+    check.onchange = () => { if (check.checked) recipeDraft.ingredients[k] = 1; else delete recipeDraft.ingredients[k]; builderUI(); };
+    qty.onchange = () => { recipeDraft.ingredients[k] = +qty.value; builderUI(); };
+    row.append(check, uiEl('span', v[0]), qty); box.append(row);
+  });
+  $('customPricePreview').textContent = 'Auto price: ' + customPrice(recipeDraft.ingredients) + 'c';
+}
+function kitchenUI() {
+  const book = recipeBook();
+  const grid = uiClear('recipeGrid');
+  Object.entries(book).forEach(([k, v]) => {
+    const card = uiEl('article', null, 'card');
+    card.append(uiEl('h3', v[0]), uiEl('small', (s.customRecipes[k] ? 'Custom · ' : '') + reqText(v[1])), uiEl('p', 'Price ' + v[2] + 'c · Success ' + Math.round(cookChance() * 100) + '%'), uiEl('strong', 'Stock: ' + (s.dishes[k] || 0)), uiButton('Cook · 1 Energy', () => cook(k), !has(v[1])));
+    grid.append(card);
+  });
+  const select = uiClear('autoRecipeSelect');
+  Object.entries(book).forEach(([k, v]) => { const o = uiEl('option', v[0]); o.value = k; o.selected = s.autoRecipe === k; select.append(o); });
+  select.onchange = () => { s.autoRecipe = select.value; done(); };
+  builderUI();
+}
+function restoUI() {
+  const book = recipeBook();
+  $('menuCount').textContent = s.menu.length + ' / 3';
+  const menuBox = uiClear('menuGrid');
+  Object.entries(book).forEach(([k, v]) => {
+    const label = uiEl('label', null, 'menu-item' + (s.menu.includes(k) ? ' selected' : ''));
+    const check = uiEl('input'); check.type = 'checkbox'; check.checked = s.menu.includes(k); check.onchange = () => menu(k);
+    label.append(check, uiEl('span', v[0] + ' · ' + (s.dishes[k] || 0) + ' ready · ' + v[2] + 'c')); menuBox.append(label);
+  });
+  const workers = uiClear('workerGrid');
+  Object.entries(WORKERS).forEach(([k, w]) => {
+    const card = uiEl('article', null, 'worker-card' + (s.workers[k] ? ' hired' : ''));
+    card.append(uiEl('h3', w[0]), uiEl('small', 'Hire ' + w[1] + 'c · Wage ' + w[2] + 'c/job'), uiEl('p', w[4] + ' Every ' + w[3] + 's.'), uiButton(s.workers[k] ? 'Hired' : 'Hire ' + w[1] + 'c', () => hireWorker(k), s.workers[k]));
+    workers.append(card);
+  });
+  const hasDish = s.menu.some(k => s.dishes[k] > 0);
+  $('serviceTimer').textContent = !s.workers.server ? 'Manual only' : !hasDish ? 'Waiting for dish' : Math.max(0, Math.ceil(WORKERS.server[3] - s.workerProgress.server)) + 's';
+  $('servedValue').textContent = s.served;
+  $('debtValue').textContent = s.coins < 0 ? Math.abs(Math.floor(s.coins)) + 'c debt' : 'Stable';
+  $('serveNow').disabled = !hasDish || s.energy < 1;
+}
