@@ -26,7 +26,7 @@
       <canvas id="worldMap" width="512" height="320" aria-label="Top-down pixel map of farm, restaurant and dungeon"></canvas>
       <div class="world-copy">
         <h2>Your little corner of Bramblewick</h2>
-        <p>Grow crops, cook dishes, set a menu, then let the restaurant serve while you are away.</p>
+        <p>Grow crops, invent recipes, hire workers, then let the farm and restaurant progress while you are away.</p>
         <div class="pill-row">
           <span>Town favor <b id="favorValue">0</b></span>
           <span>Mira ♥ <b id="miraValue">0</b></span>
@@ -44,30 +44,77 @@
     </nav>
 
     <section class="panel active" id="farmPanel">
-      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 01</p><h2>Farm</h2></div><p>Plant one crop per plot. Ready crops eventually wither if ignored.</p></div>
+      <div class="section-heading">
+        <div><p class="eyebrow">CORE LOOP 01</p><h2>Farm</h2></div>
+        <p>Plant crops manually. A hired Farmhand harvests ready crops automatically, including offline.</p>
+      </div>
       <div class="crop-picker" id="cropPicker"></div>
       <div class="plot-grid" id="plotGrid"></div>
-      <h3>Crop inventory</h3><div class="inventory-grid" id="cropInventory"></div>
+      <h3>Crop inventory</h3>
+      <div class="inventory-grid" id="cropInventory"></div>
     </section>
 
     <section class="panel" id="kitchenPanel">
-      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 02</p><h2>Kitchen</h2></div><p>Cooking can fail. Higher Cooking improves success odds.</p></div>
+      <div class="section-heading">
+        <div><p class="eyebrow">CORE LOOP 02</p><h2>Kitchen</h2></div>
+        <p>Cook known dishes or invent your own. A hired Cook repeats one selected recipe automatically.</p>
+      </div>
+
+      <div class="subpanel">
+        <h3>Create your own recipe</h3>
+        <p class="muted-copy">Choose existing ingredients. Selling price is calculated automatically from ingredient value.</p>
+        <div class="recipe-builder">
+          <label class="field">Recipe name
+            <input id="customRecipeName" maxlength="30" placeholder="e.g. Golden Garden Bowl" />
+          </label>
+          <div class="ingredient-picker" id="customIngredientPicker"></div>
+          <div class="action-row">
+            <strong id="customPricePreview">Auto price: 0c</strong>
+            <button class="primary" id="createRecipe">Create recipe</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="subpanel">
+        <h3>Cook worker target</h3>
+        <div class="action-row">
+          <select id="autoRecipeSelect" aria-label="Recipe for cook worker"></select>
+          <small class="muted-copy">Used only after hiring the Cook.</small>
+        </div>
+      </div>
+
       <div class="card-grid" id="recipeGrid"></div>
     </section>
 
     <section class="panel" id="restaurantPanel">
-      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 03</p><h2>Restaurant</h2></div><p>Choose up to 3 menu dishes and one staff setup. Service runs automatically, including offline.</p></div>
-      <div class="subpanel"><h3>Menu board <span id="menuCount">0 / 3</span></h3><div class="menu-grid" id="menuGrid"></div></div>
-      <div class="subpanel"><h3>Staff</h3><div class="staff-grid" id="staffGrid"></div></div>
+      <div class="section-heading">
+        <div><p class="eyebrow">CORE LOOP 03</p><h2>Restaurant</h2></div>
+        <p>Choose up to 3 dishes. Hire dedicated workers for auto-harvest, auto-cook, and auto-serve.</p>
+      </div>
+      <div class="subpanel">
+        <div class="action-row">
+          <h3>Menu board <span id="menuCount">0 / 3</span></h3>
+          <button id="serveNow">Serve 1 manually · 1 Energy</button>
+        </div>
+        <div class="menu-grid" id="menuGrid"></div>
+      </div>
+      <div class="subpanel">
+        <h3>Workers</h3>
+        <p class="muted-copy">Each worker has a one-time hire cost and a wage paid only when a job is performed.</p>
+        <div class="worker-grid" id="workerGrid"></div>
+      </div>
       <div class="restaurant-meter">
-        <div><span>Next customer</span><strong id="serviceTimer">—</strong></div>
+        <div><span>Next auto-service</span><strong id="serviceTimer">Manual only</strong></div>
         <div><span>Total served</span><strong id="servedValue">0</strong></div>
         <div><span>Debt risk</span><strong id="debtValue">Stable</strong></div>
       </div>
     </section>
 
     <section class="panel" id="dungeonPanel">
-      <div class="section-heading"><div><p class="eyebrow">OPTIONAL RPG</p><h2>Rootcellar Ruins</h2></div><p>Fight for coins, XP, and rare spice. Farming and level improve attack; Energy limits runs.</p></div>
+      <div class="section-heading">
+        <div><p class="eyebrow">OPTIONAL RPG</p><h2>Rootcellar Ruins</h2></div>
+        <p>Fight for coins and XP. Farming and level improve attack; Energy limits runs.</p>
+      </div>
       <div id="dungeonIdle" class="dungeon-stage">
         <div class="pixel-monster slime" aria-hidden="true"></div>
         <h3>Floor <span id="floorValue">1</span> awaits</h3>
@@ -84,9 +131,13 @@
     </section>
 
     <section class="panel" id="townPanel">
-      <div class="section-heading"><div><p class="eyebrow">CONSEQUENCES</p><h2>Bramblewick</h2></div><p>Some choices are permanent for this save. Relationships and town favor remember them.</p></div>
+      <div class="section-heading">
+        <div><p class="eyebrow">CONSEQUENCES</p><h2>Bramblewick</h2></div>
+        <p>Some choices are permanent for this save. Relationships and town favor remember them.</p>
+      </div>
       <div class="subpanel" id="choiceEvent"></div>
-      <h3>Consequence log</h3><div class="log" id="eventLog"></div>
+      <h3>Consequence log</h3>
+      <div class="log" id="eventLog"></div>
       <button class="danger-link" id="resetSave">Reset save</button>
     </section>
 
@@ -98,8 +149,14 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="modal-backdrop hidden" id="offlineModal">
-    <div class="modal"><p class="eyebrow">WELCOME BACK</p><h2>While you were away…</h2><div id="offlineSummary"></div><button class="primary" id="closeOffline">Collect & continue</button></div>
+    <div class="modal">
+      <p class="eyebrow">WELCOME BACK</p>
+      <h2>While you were away…</h2>
+      <div id="offlineSummary"></div>
+      <button class="primary" id="closeOffline">Collect & continue</button>
+    </div>
   </div>
+
   <script src="game.js"></script>
 </body>
 </html>
