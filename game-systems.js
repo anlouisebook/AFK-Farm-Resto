@@ -1,176 +1,122 @@
-function enter() {
-  if (s.combat || !energy(6)) return;
-  const hp = 18 + s.level * 4 + s.stats.stamina * 2;
-  const eh = 8 + s.floor * 6;
-  s.combat = {
-    hp,
-    max: hp,
-    eh,
-    emax: eh,
-    name: s.floor === 3 ? 'Cellar Warden' : s.floor === 2 ? 'Root Goblin' : 'Moss Slime'
-  };
-  skill('stamina', 2);
-  done();
+'use strict';
+
+function pEnsureFarmUI() {
+  if ($('farmPlanPanel')) return;
+  var panel = E('div', null, 'subpanel');
+  panel.id = 'farmPlanPanel';
+  var farm = $('farmPanel');
+  farm.insertBefore(panel, $('cropPicker'));
 }
 
-function strike() {
-  const c = s.combat;
-  if (!c) return;
-  c.eh -= 2 + s.level + Math.floor(s.stats.farming / 2) + Math.floor(Math.random() * 4);
-  if (c.eh <= 0) {
-    const n = 12 + s.floor * 9;
-    s.coins += n;
-    xp(14 + s.floor * 5);
-    log(`Cleared floor ${s.floor}. +${n} coins.`, 'good');
-    s.floor = s.floor === 3 ? 1 : s.floor + 1;
-    s.combat = null;
-    toast('Victory!');
-    return done();
-  }
-  c.hp -= 1 + s.floor + Math.floor(Math.random() * 4);
-  if (c.hp <= 0) {
-    const n = Math.min(Math.max(0, s.coins + 50), 15 + s.floor * 7);
-    s.coins -= n;
-    s.rep = cap(s.rep - 3, 0, 100);
-    s.floor = 1;
-    s.combat = null;
-    log(`Dungeon defeat. Lost ${n} coins and 3 reputation.`, 'bad');
-  }
-  done();
+function pRenderFarmPlan() {
+  pEnsureFarmUI();
+  var panel = clear('farmPlanPanel');
+  panel.append(E('h3', 'Farm planning · target inventory'));
+  var grid = E('div', null, 'ingredient-picker');
+  Object.entries(C).forEach(([k, v]) => {
+    var row = E('label', null, 'ingredient-row');
+    var input = E('input');
+    input.type = 'number'; input.min = 0; input.max = 99; input.value = s.plan[k] || 0;
+    input.onchange = () => { s.plan[k] = Math.max(0, Math.min(99, Number(input.value) || 0)); save(); };
+    row.append(E('span', v[0]), input);
+    grid.append(row);
+  });
+  panel.append(grid);
+  var next = Math.min(3, s.farmLevel + 1);
+  var req = next === 2 ? 5 : 7;
+  var text = 'Farm Lv ' + s.farmLevel + ' · ' + s.plots.length + ' plots · +' + (s.farmLevel - 1) + ' yield';
+  panel.append(E('p', text, 'muted-copy'));
+  if (s.farmLevel < 3) panel.append(B('Upgrade farm · ' + P_FARM_COST[next] + 'c · Lv ' + req, pUpgradeFarm, s.level < req));
+  else panel.append(E('strong', 'Farm fully upgraded'));
 }
 
-function flee() {
-  if (!s.combat) return;
-  s.combat = null;
-  s.rep = cap(s.rep - 1, 0, 100);
-  log('Fled the dungeon. Reputation -1.', 'bad');
-  done();
-}
+farmUI = function() {
+  P_OLD.farmUI();
+  pRenderFarmPlan();
+};
 
-function choice() {
-  if (s.level >= 2 && !s.flags.community) {
-    return ['Community Supper', 'Mira asks for support. This choice is permanent.', [
-      ['Donate 60 coins', s.coins < 60, () => {
-        s.coins -= 60; s.favor += 2; s.rel.mira += 3; s.flags.community = 'donated';
-        log('Funded the supper. Town +2, Mira +3.', 'good');
-      }],
-      ['Decline', false, () => {
-        s.rep = cap(s.rep - 2, 0, 100); s.rel.mira -= 2; s.flags.community = 'declined';
-        log('Declined the supper. Reputation -2, Mira -2.', 'bad');
-      }]
-    ]];
-  }
-  if (s.served >= 10 && !s.flags.supplier) {
-    return ['Seed Supplier', 'Choose one permanent contract.', [
-      ['Local: +10% seed cost', false, () => {
-        s.flags.supplier = 'local'; s.favor++; s.rel.bram += 2;
-        log('Local supplier chosen.', 'good');
-      }],
-      ['Bulk: -20% seed cost', false, () => {
-        s.flags.supplier = 'bulk'; s.favor--; s.rel.bram--;
-        log('Bulk seeds are cheaper but wither sooner.', 'bad');
-      }]
-    ]];
-  }
-  return null;
-}
+kitchenUI = function() {
+  P_OLD.kitchenUI();
+  var rules = pRecipeRules();
+  var locked = !rules.slots;
+  $('customRecipeName').disabled = locked;
+  $('createRecipe').disabled = locked;
+  $('createRecipe').textContent = locked ? 'Unlocks Lv 8' : 'Create recipe';
+  Object.keys(C).forEach((k, i) => {
+    var row = $('customIngredientPicker').children[i];
+    if (!row) return;
+    var allow = rules.crops.includes(k);
+    var check = row.querySelector('input'), select = row.querySelector('select');
+    if (!allow) { delete D[k]; check.checked = false; }
+    check.disabled = !allow;
+    select.disabled = !allow || !check.checked;
+    row.title = allow ? '' : 'Ingredient unlocks later';
+  });
+  if (Object.keys(D).length > rules.slots) Object.keys(D).slice(rules.slots).forEach(k => delete D[k]);
+  $('customPricePreview').textContent = locked ? 'Custom recipes unlock at Lv 8' : 'Slots ' + Object.keys(D).length + '/' + rules.slots + ' · Auto price: ' + price(D) + 'c';
+};
 
-function choose(i) {
-  const e = choice();
-  if (!e) return;
-  e[2][i][2]();
-  done();
-}
-
-function consequence() {
-  if (!s.flags.debt && s.coins <= -50) {
-    s.flags.debt = true;
-    s.rep = cap(s.rep - 10, 0, 100);
-    s.menu = [];
-    log('Debt crisis: service stopped, reputation -10.', 'bad');
-  }
-}
-
-function offlineFarmer(start, now) {
-  if (!s.workers.farmer) return 0;
-  let count = 0;
-  s.plots.forEach((p, i) => {
-    if (!p.crop) return;
-    const g = C[p.crop][2];
-    const ageAtStart = (start - p.at) / 1000;
-    const readyAt = p.at + g * 1000;
-    if (ageAtStart < g + witherWindow(p.crop) && readyAt <= now) {
-      s.coins -= WORKERS.farmer[2];
-      p.status = 'ready';
-      if (collectPlot(i, true, true)) count++;
+restoUI = function() {
+  P_OLD.restoUI();
+  Object.keys(W).forEach((k, i) => {
+    var card = $('workerGrid').children[i];
+    if (!card) return;
+    var hireBtn = card.querySelector('button');
+    if (!s.workers[k] && s.level < P_UNLOCK[k]) {
+      hireBtn.disabled = true;
+      hireBtn.textContent = 'Unlock Lv ' + P_UNLOCK[k];
+    }
+    if (s.workers[k]) {
+      var lvl = s.helperLevel[k] || 1;
+      card.append(E('small', 'Helper Lv ' + lvl + ' · ' + pInterval(k).toFixed(1) + 's interval'));
+      if (lvl < 2) card.append(B('Upgrade Lv 2 · ' + P_HELPER_COST[k] + 'c', () => pUpgradeHelper(k), s.level < 6));
     }
   });
-  return count;
+};
+
+function pRenderRoadmap() {
+  var host = $('skillGrid').parentElement;
+  var old = $('unlockRoadmap');
+  if (old) old.remove();
+  var box = E('div', null, 'subpanel'); box.id = 'unlockRoadmap';
+  box.append(E('h3', 'Level unlocks'));
+  var items = [
+    [2, 'Farmhand'], [3, 'Cook'], [4, 'Server'], [5, 'Farm Upgrade Lv 2'],
+    [6, 'Helper Upgrade Lv 2'], [7, 'Farm Upgrade Lv 3'], [8, 'Custom Recipes'],
+    [10, '3 recipe ingredients + Corn'], [12, '4 ingredients + Carrot'], [15, '5 ingredients + Potato']
+  ];
+  items.forEach(x => { var row = E('small', (s.level >= x[0] ? '✓ ' : '🔒 ') + 'Lv ' + x[0] + ' · ' + x[1]); row.style.display = 'block'; box.append(row); });
+  host.append(box);
 }
 
-function offline() {
-  const now = Date.now();
-  const start = s.seen || now;
-  const sec = Math.min(CAP, Math.max(0, (now - start) / 1000));
-  if (sec < 15) return;
+var P_OLD_RENDER = render;
+render = function() {
+  pResizePlots();
+  P_OLD_RENDER();
+  pRenderRoadmap();
+};
 
-  s.energy = Math.min(maxE(), s.energy + sec / 30);
-  const harvested = offlineFarmer(start, now);
-  grow(now);
-
-  let cooked = 0;
-  if (s.workers.cook) {
-    const attempts = Math.min(3000, Math.floor((s.workerProgress.cook + sec) / WORKERS.cook[3]));
-    for (let i = 0; i < attempts; i++) {
-      if (!workerCook(true)) break;
-      cooked++;
-    }
-    s.workerProgress.cook = (s.workerProgress.cook + sec) % WORKERS.cook[3];
+function pOfflineProgression() {
+  var now = Date.now();
+  var sec = Math.min(28800, Math.max(0, (now - s.progressSeen) / 1000));
+  if (sec < 15) { s.progressSeen = now; save(); return; }
+  if (s.workers.farmer) {
+    var interval = pInterval('farmer');
+    var attempts = Math.min(3000, Math.floor(sec / interval));
+    var start = now - sec * 1000;
+    for (var i = 1; i <= attempts; i++) pFarmJob(start + i * interval * 1000);
   }
-
-  let served = 0;
-  let bad = 0;
-  if (s.workers.server) {
-    const attempts = Math.min(3000, Math.floor((s.workerProgress.server + sec) / WORKERS.server[3]));
-    for (let i = 0; i < attempts; i++) {
-      const beforeRep = s.rep;
-      if (!workerServe(true)) break;
-      served++;
-      if (s.rep < beforeRep) bad++;
-    }
-    s.workerProgress.server = (s.workerProgress.server + sec) % WORKERS.server[3];
-  }
-
-  if (s.workers.farmer) s.workerProgress.farmer = (s.workerProgress.farmer + sec) % WORKERS.farmer[3];
-  consequence();
-  s.seen = now;
+  ['cook', 'server'].forEach(k => {
+    if (!s.workers[k] || s.helperLevel[k] < 2) return;
+    var extra = Math.max(0, Math.floor(sec / pInterval(k)) - Math.floor(sec / W[k][3]));
+    for (var i = 0; i < Math.min(1000, extra); i++) if (!P_OLD.job(k)) break;
+  });
+  s.progressSeen = now;
+  debt();
   save();
-
-  $('offlineSummary').innerHTML = `<ul>
-    <li>Away ${duration(sec)} (8h cap)</li>
-    <li>${harvested} crops auto-harvested</li>
-    <li>${cooked} auto-cook attempts</li>
-    <li>${served} customers auto-served</li>
-    <li>${bad} unhappy customers</li>
-    <li>Energy recovery applied</li>
-  </ul>`;
-  $('offlineModal').classList.remove('hidden');
 }
 
-function duration(n) {
-  const h = Math.floor(n / 3600);
-  const m = Math.floor((n % 3600) / 60);
-  return h ? `${h}h ${m}m` : m ? `${m}m` : `${Math.floor(n)}s`;
-}
-
-function tick() {
-  const now = Date.now();
-  const dt = Math.min(5, (now - s.tick) / 1000);
-  s.tick = now;
-  grow(now);
-  s.energy = Math.min(maxE(), s.energy + dt / 30);
-  runWorkers(dt);
-  consequence();
-  save();
-  render();
-}
+pInitState();
+pOfflineProgression();
+setInterval(() => { s.progressSeen = Date.now(); }, 5000);
+render();
