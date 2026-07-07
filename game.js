@@ -1,97 +1,26 @@
-function uiEl(tag, text, cls) {
-  const node = document.createElement(tag);
-  if (text !== undefined && text !== null) node.textContent = text;
-  if (cls) node.className = cls;
-  return node;
-}
-function uiClear(id) { const node = $(id); node.replaceChildren(); return node; }
-function uiButton(text, fn, disabled) {
-  const b = uiEl('button', text);
-  b.disabled = !!disabled;
-  b.onclick = fn;
-  return b;
-}
-function hud() {
-  $('levelValue').textContent = s.level;
-  $('xpValue').textContent = Math.floor(s.xp) + ' / ' + need();
-  $('coinsValue').textContent = Math.floor(s.coins);
-  $('energyValue').textContent = Math.floor(s.energy) + ' / ' + maxE();
-  $('repValue').textContent = Math.floor(s.rep);
-  $('favorValue').textContent = s.favor;
-  $('miraValue').textContent = Math.round(s.rel.mira);
-  $('bramValue').textContent = Math.round(s.rel.bram);
-}
-function farmUI() {
-  const picker = uiClear('cropPicker');
-  Object.entries(C).forEach(([k, v]) => {
-    const b = uiButton(v[0] + ' · ' + seed(k) + 'c · ' + v[2] + 's', () => { s.pick = k; done(); });
-    b.className = 'crop-chip' + (s.pick === k ? ' selected' : '');
-    picker.append(b);
-  });
-  const plots = uiClear('plotGrid');
-  s.plots.forEach((p, i) => {
-    const card = uiEl('div', null, 'plot ' + p.status);
-    if (!p.crop) {
-      card.append(uiEl('strong', 'Plot ' + (i + 1)), uiEl('small', 'Empty soil'), uiButton('Plant ' + C[s.pick][0], () => plant(i)));
-    } else {
-      const v = C[p.crop];
-      const age = (Date.now() - p.at) / 1000;
-      const label = p.status === 'ready' ? 'Ready!' : p.status === 'withered' ? 'Withered' : Math.max(0, Math.ceil(v[2] - age)) + 's left';
-      card.append(uiEl('strong', v[0]), uiEl('small', label), uiButton(p.status === 'withered' ? 'Clear' : 'Harvest', () => harvest(i), p.status === 'growing'));
-    }
-    plots.append(card);
-  });
-  const inv = uiClear('cropInventory');
-  Object.entries(C).forEach(([k, v]) => {
-    const card = uiEl('div', null, 'inventory-item');
-    card.append(uiEl('strong', v[0] + ': ' + s.crops[k]), uiEl('small', 'Market ' + v[3] + 'c'), uiButton('Sell 1', () => sell(k), !s.crops[k]));
-    inv.append(card);
-  });
-}
-function builderUI() {
-  const box = uiClear('customIngredientPicker');
-  Object.entries(C).forEach(([k, v]) => {
-    const row = uiEl('label', null, 'ingredient-row');
-    const check = uiEl('input'); check.type = 'checkbox'; check.checked = !!recipeDraft.ingredients[k];
-    const qty = uiEl('select'); qty.disabled = !check.checked;
-    [1,2,3].forEach(n => { const o = uiEl('option', '×' + n); o.value = n; o.selected = (recipeDraft.ingredients[k] || 1) === n; qty.append(o); });
-    check.onchange = () => { if (check.checked) recipeDraft.ingredients[k] = 1; else delete recipeDraft.ingredients[k]; builderUI(); };
-    qty.onchange = () => { recipeDraft.ingredients[k] = +qty.value; builderUI(); };
-    row.append(check, uiEl('span', v[0]), qty); box.append(row);
-  });
-  $('customPricePreview').textContent = 'Auto price: ' + customPrice(recipeDraft.ingredients) + 'c';
-}
-function kitchenUI() {
-  const book = recipeBook();
-  const grid = uiClear('recipeGrid');
-  Object.entries(book).forEach(([k, v]) => {
-    const card = uiEl('article', null, 'card');
-    card.append(uiEl('h3', v[0]), uiEl('small', (s.customRecipes[k] ? 'Custom · ' : '') + reqText(v[1])), uiEl('p', 'Price ' + v[2] + 'c · Success ' + Math.round(cookChance() * 100) + '%'), uiEl('strong', 'Stock: ' + (s.dishes[k] || 0)), uiButton('Cook · 1 Energy', () => cook(k), !has(v[1])));
-    grid.append(card);
-  });
-  const select = uiClear('autoRecipeSelect');
-  Object.entries(book).forEach(([k, v]) => { const o = uiEl('option', v[0]); o.value = k; o.selected = s.autoRecipe === k; select.append(o); });
-  select.onchange = () => { s.autoRecipe = select.value; done(); };
-  builderUI();
-}
-function restoUI() {
-  const book = recipeBook();
-  $('menuCount').textContent = s.menu.length + ' / 3';
-  const menuBox = uiClear('menuGrid');
-  Object.entries(book).forEach(([k, v]) => {
-    const label = uiEl('label', null, 'menu-item' + (s.menu.includes(k) ? ' selected' : ''));
-    const check = uiEl('input'); check.type = 'checkbox'; check.checked = s.menu.includes(k); check.onchange = () => menu(k);
-    label.append(check, uiEl('span', v[0] + ' · ' + (s.dishes[k] || 0) + ' ready · ' + v[2] + 'c')); menuBox.append(label);
-  });
-  const workers = uiClear('workerGrid');
-  Object.entries(WORKERS).forEach(([k, w]) => {
-    const card = uiEl('article', null, 'worker-card' + (s.workers[k] ? ' hired' : ''));
-    card.append(uiEl('h3', w[0]), uiEl('small', 'Hire ' + w[1] + 'c · Wage ' + w[2] + 'c/job'), uiEl('p', w[4] + ' Every ' + w[3] + 's.'), uiButton(s.workers[k] ? 'Hired' : 'Hire ' + w[1] + 'c', () => hireWorker(k), s.workers[k]));
-    workers.append(card);
-  });
-  const hasDish = s.menu.some(k => s.dishes[k] > 0);
-  $('serviceTimer').textContent = !s.workers.server ? 'Manual only' : !hasDish ? 'Waiting for dish' : Math.max(0, Math.ceil(WORKERS.server[3] - s.workerProgress.server)) + 's';
-  $('servedValue').textContent = s.served;
-  $('debtValue').textContent = s.coins < 0 ? Math.abs(Math.floor(s.coins)) + 'c debt' : 'Stable';
-  $('serveNow').disabled = !hasDish || s.energy < 1;
-}
+'use strict';
+const K='hh-afk-v1',C={lettuce:['Lettuce',3,12,5],tomato:['Tomato',5,22,8],corn:['Corn',8,36,12],carrot:['Carrot',10,52,15],potato:['Potato',14,75,21]},R0={salad:['Garden Salad',{lettuce:1,tomato:1},18],soup:['Corn Soup',{corn:1,carrot:1},28],plate:['Tomato Plate',{tomato:2,carrot:1},31],stew:['Harvest Stew',{carrot:1,corn:1,potato:1},48],feast:['Farm Feast',{lettuce:1,tomato:1,corn:1,carrot:1,potato:1},82]},W={farmer:['Farmhand',100,1,5],cook:['Cook',140,2,15],server:['Server',120,1,12]};
+const F=()=>({coins:120,xp:0,level:1,energy:25,rep:50,favor:0,rel:{mira:0,bram:0},stats:{farming:1,cooking:1,charisma:1,stamina:1},sx:{farming:0,cooking:0,charisma:0,stamina:0},crops:Object.fromEntries(Object.keys(C).map(k=>[k,0])),dishes:Object.fromEntries(Object.keys(R0).map(k=>[k,0])),customRecipes:{},plots:Array.from({length:6},()=>({crop:null,at:0,status:'empty'})),pick:'lettuce',menu:['salad'],autoRecipe:'salad',workers:{farmer:false,cook:false,server:false},wp:{farmer:0,cook:0,server:0},served:0,floor:1,combat:null,flags:{supplier:null,debt:false},logs:[['Farm inherited.','good']],seen:Date.now(),tick:Date.now()});
+const BK=(x=s)=>({...R0,...(x.customRecipes||{})});
+function load(){let b=F();try{let r=JSON.parse(localStorage.getItem(K));if(!r)return b;let x={...b,...r,rel:{...b.rel,...(r.rel||{})},stats:{...b.stats,...(r.stats||{})},sx:{...b.sx,...(r.sx||{})},flags:{...b.flags,...(r.flags||{})},workers:{...b.workers,...(r.workers||{})},wp:{...b.wp,...(r.wp||r.workerProgress||{})},customRecipes:r.customRecipes||{}};x.crops={...b.crops,...(r.crops||{})};let q=BK(x);x.dishes={...Object.fromEntries(Object.keys(q).map(k=>[k,0])),...(r.dishes||{})};x.menu=(r.menu||b.menu).filter(k=>q[k]).slice(0,3);x.autoRecipe=q[r.autoRecipe]?r.autoRecipe:Object.keys(q)[0];x.tick=Date.now();return x}catch{return b}}
+let s=load(),D={},tt;const $=i=>document.getElementById(i),cap=(v,a,b)=>Math.max(a,Math.min(b,v)),maxE=()=>20+s.stats.stamina*5,xn=()=>80+s.level*20,sn=k=>20+s.stats[k]*15;
+function save(){s.seen=Date.now();localStorage.setItem(K,JSON.stringify(s));$('saveState').textContent='Autosaved'}function log(t,c=''){s.logs.unshift([t,c]);s.logs=s.logs.slice(0,30)}function toast(t){let e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),1800)}
+function xp(n){s.xp+=n;while(s.xp>=xn()){s.xp-=xn();s.level++;s.energy=maxE();log('Level '+s.level+'!','good')}}function sk(k,n){s.sx[k]+=n;while(s.sx[k]>=sn(k)){s.sx[k]-=sn(k);s.stats[k]++;if(k==='stamina')s.energy=maxE()}}function en(n){if(s.energy<n){toast('Not enough Energy.');return 0}s.energy-=n;return 1}
+function grow(now=Date.now()){s.plots.forEach(p=>{if(!p.crop)return;let a=(now-p.at)/1000,g=C[p.crop][2];p.status=a>=g*3?'withered':a>=g?'ready':'growing'})}function plant(i){let p=s.plots[i],k=s.pick,c=C[k][1];if(p.status!=='empty')return;if(s.coins<c)return toast('Not enough coins.');if(!en(1))return;s.coins-=c;Object.assign(p,{crop:k,at:Date.now(),status:'growing'});sk('farming',1);done()}
+function take(i,a=0,q=0){let p=s.plots[i];if(p.status!=='ready')return 0;let n=1+Math.floor(s.stats.farming/3);s.crops[p.crop]+=n;xp(a?3:6);sk('farming',a?2:4);if(!q)log((a?'Farmhand: ':'Harvested ')+n+' '+C[p.crop][0],'good');Object.assign(p,{crop:null,at:0,status:'empty'});return 1}function harvest(i){let p=s.plots[i];if(p.status==='withered'){s.rep=cap(s.rep-1,0,100);log('Crop withered. Reputation -1.','bad');Object.assign(p,{crop:null,at:0,status:'empty'});return done()}if(take(i))done()}function sell(k){if(s.crops[k]){s.crops[k]--;s.coins+=C[k][3];done()}}
+const has=o=>Object.entries(o).every(([k,n])=>s.crops[k]>=n),req=o=>Object.entries(o).map(([k,n])=>n+' '+C[k][0]).join(' + '),cc=()=>Math.min(.96,.68+s.stats.cooking*.045);
+function cook1(k,a=0,q=0){let r=BK()[k];if(!r||!has(r[1]))return 0;if(!a&&!en(1))return 0;if(a)s.coins-=W.cook[2];Object.entries(r[1]).forEach(([x,n])=>s.crops[x]-=n);if(Math.random()<cc()){s.dishes[k]=(s.dishes[k]||0)+1;xp(a?4:8);sk('cooking',a?2:5);if(!q)log('Cooked '+r[0],'good')}else{s.rep=cap(s.rep-1,0,100);if(!q)log(r[0]+' failed','bad')}return 1}function cook(k){if(cook1(k))done();else toast('Missing ingredients.')}
+function menu(k){if(s.menu.includes(k))s.menu=s.menu.filter(x=>x!==k);else if(s.menu.length<3)s.menu.push(k);else return toast('Menu limit 3.');done()}function serve(a=0,q=0){let b=BK(),z=s.menu.filter(k=>b[k]&&s.dishes[k]);if(!z.length)return 0;if(!a&&!en(1))return 0;if(a)s.coins-=W.server[2];let k=z[Math.floor(Math.random()*z.length)],r=b[k];s.dishes[k]--;s.coins+=r[2];s.served++;if(Math.random()<Math.min(.95,.7+s.stats.charisma*.03)){s.rep=cap(s.rep+1,0,100);sk('charisma',1);xp(3)}else{s.rep=cap(s.rep-2,0,100);if(!q)log('Unhappy customer. Reputation -2.','bad')}return 1}
+function hire(k){let w=W[k];if(s.workers[k])return;if(s.coins<w[1])return toast('Not enough coins.');s.coins-=w[1];s.workers[k]=true;log('Hired '+w[0],'good');done()}function job(k){if(k==='farmer'){grow();let i=s.plots.findIndex(p=>p.status==='ready');if(i<0)return 0;s.coins-=W.farmer[2];return take(i,1,1)}if(k==='cook')return cook1(s.autoRecipe,1,1);return serve(1,1)}function workers(dt){Object.keys(W).forEach(k=>{if(!s.workers[k])return;s.wp[k]+=dt;let n=W[k][3],g=0;while(s.wp[k]>=n&&g++<5){s.wp[k]-=n;job(k)}})}
+function price(o){return Object.keys(o).length?Math.max(8,Math.round(Object.entries(o).reduce((a,[k,n])=>a+C[k][3]*n,0)*1.8)):0}function newRecipe(){let n=$('customRecipeName').value.trim();if(!n)return toast('Enter a name.');if(!Object.keys(D).length)return toast('Choose ingredients.');if(Object.values(BK()).some(r=>r[0].toLowerCase()===n.toLowerCase()))return toast('Name exists.');let id='c_'+Date.now().toString(36);s.customRecipes[id]=[n,{...D},price(D)];s.dishes[id]=0;s.autoRecipe=id;D={};$('customRecipeName').value='';log('Created '+n,'good');done()}
+function enter(){if(s.combat||!en(6))return;let h=18+s.level*4+s.stats.stamina*2,e=8+s.floor*6;s.combat={hp:h,max:h,eh:e,emax:e,name:s.floor===3?'Cellar Warden':s.floor===2?'Root Goblin':'Moss Slime'};done()}function attack(){let c=s.combat;if(!c)return;c.eh-=2+s.level+Math.floor(s.stats.farming/2)+Math.floor(Math.random()*4);if(c.eh<=0){let n=12+s.floor*9;s.coins+=n;xp(15);s.floor=s.floor===3?1:s.floor+1;s.combat=null;log('Dungeon victory +'+n+' coins','good');return done()}c.hp-=1+s.floor+Math.floor(Math.random()*4);if(c.hp<=0){s.coins-=15;s.rep=cap(s.rep-3,0,100);s.floor=1;s.combat=null;log('Dungeon defeat','bad')}done()}function flee(){if(s.combat){s.combat=null;s.rep=cap(s.rep-1,0,100);done()}}
+function debt(){if(!s.flags.debt&&s.coins<=-50){s.flags.debt=true;s.rep=cap(s.rep-10,0,100);s.menu=[];log('Debt crisis: menu cleared.','bad')}}function offline(){let sec=Math.min(28800,Math.max(0,(Date.now()-s.seen)/1000));if(sec<15)return;s.energy=Math.min(maxE(),s.energy+sec/30);grow();let h=0,c=0,v=0;if(s.workers.farmer)s.plots.forEach((p,i)=>{if(p.status==='ready'){s.coins-=W.farmer[2];h+=take(i,1,1)}});for(let k of ['cook','server'])if(s.workers[k]){let n=Math.min(1000,Math.floor((s.wp[k]+sec)/W[k][3]));for(let i=0;i<n&&job(k);i++)k==='cook'?c++:v++;s.wp[k]=(s.wp[k]+sec)%W[k][3]}save();$('offlineSummary').textContent='Away: harvested '+h+', cooked '+c+', served '+v;$('offlineModal').classList.remove('hidden')}
+function tick(){let n=Date.now(),dt=Math.min(5,(n-s.tick)/1000);s.tick=n;grow(n);s.energy=Math.min(maxE(),s.energy+dt/30);workers(dt);debt();save();render()}
+function E(t,x,c){let e=document.createElement(t);if(x!==undefined)e.textContent=x;if(c)e.className=c;return e}function clear(i){let e=$(i);e.replaceChildren();return e}function B(x,f,d){let e=E('button',x);e.onclick=f;e.disabled=!!d;return e}
+function hud(){$('levelValue').textContent=s.level;$('xpValue').textContent=Math.floor(s.xp)+' / '+xn();$('coinsValue').textContent=Math.floor(s.coins);$('energyValue').textContent=Math.floor(s.energy)+' / '+maxE();$('repValue').textContent=Math.floor(s.rep);$('favorValue').textContent=s.favor;$('miraValue').textContent=Math.round(s.rel.mira);$('bramValue').textContent=Math.round(s.rel.bram)}
+function farmUI(){let p=clear('cropPicker');Object.entries(C).forEach(([k,v])=>{let b=B(v[0]+' '+v[1]+'c',()=>{s.pick=k;done()});b.className='crop-chip'+(s.pick===k?' selected':'');p.append(b)});let g=clear('plotGrid');s.plots.forEach((p,i)=>{let d=E('div',null,'plot '+p.status);d.append(E('strong',p.crop?C[p.crop][0]:'Plot '+(i+1)),E('small',p.crop?p.status:'Empty'),p.crop?B(p.status==='withered'?'Clear':'Harvest',()=>harvest(i),p.status==='growing'):B('Plant '+C[s.pick][0],()=>plant(i)));g.append(d)});let q=clear('cropInventory');Object.entries(C).forEach(([k,v])=>{let d=E('div',null,'inventory-item');d.append(E('strong',v[0]+': '+s.crops[k]),B('Sell 1',()=>sell(k),!s.crops[k]));q.append(d)})}
+function kitchenUI(){let b=BK(),g=clear('recipeGrid');Object.entries(b).forEach(([k,v])=>{let d=E('article',null,'card');d.append(E('h3',v[0]),E('small',req(v[1])),E('p','Price '+v[2]+'c · '+Math.round(cc()*100)+'%'),E('strong','Stock '+(s.dishes[k]||0)),B('Cook',()=>cook(k),!has(v[1])));g.append(d)});let z=clear('autoRecipeSelect');Object.entries(b).forEach(([k,v])=>{let o=E('option',v[0]);o.value=k;o.selected=s.autoRecipe===k;z.append(o)});z.onchange=()=>{s.autoRecipe=z.value;done()};let q=clear('customIngredientPicker');Object.entries(C).forEach(([k,v])=>{let l=E('label',null,'ingredient-row'),c=E('input'),u=E('select');c.type='checkbox';c.checked=!!D[k];u.disabled=!c.checked;[1,2,3].forEach(n=>{let o=E('option','×'+n);o.value=n;o.selected=(D[k]||1)===n;u.append(o)});c.onchange=()=>{c.checked?D[k]=1:delete D[k];render()};u.onchange=()=>{D[k]=+u.value;render()};l.append(c,E('span',v[0]),u);q.append(l)});$('customPricePreview').textContent='Auto price: '+price(D)+'c'}
+function restoUI(){let b=BK(),m=clear('menuGrid');$('menuCount').textContent=s.menu.length+' / 3';Object.entries(b).forEach(([k,v])=>{let l=E('label',null,'menu-item'+(s.menu.includes(k)?' selected':'')),c=E('input');c.type='checkbox';c.checked=s.menu.includes(k);c.onchange=()=>menu(k);l.append(c,E('span',v[0]+' · '+(s.dishes[k]||0)+' · '+v[2]+'c'));m.append(l)});let q=clear('workerGrid');Object.entries(W).forEach(([k,v])=>{let d=E('article',null,'worker-card'+(s.workers[k]?' hired':''));d.append(E('h3',v[0]),E('small','Hire '+v[1]+'c · '+v[2]+'c/job'),B(s.workers[k]?'Hired':'Hire',()=>hire(k),s.workers[k]));q.append(d)});let ok=s.menu.some(k=>s.dishes[k]);$('serviceTimer').textContent=s.workers.server?(ok?'Active':'Waiting'):'Manual only';$('servedValue').textContent=s.served;$('debtValue').textContent=s.coins<0?Math.abs(Math.floor(s.coins))+'c debt':'Stable';$('serveNow').disabled=!ok}
+function dungeonUI(){$('floorValue').textContent=s.floor;$('dungeonIdle').classList.toggle('hidden',!!s.combat);$('combatStage').classList.toggle('hidden',!s.combat);if(s.combat){$('playerHp').textContent=s.combat.hp+' / '+s.combat.max+' HP';$('enemyHp').textContent=s.combat.eh+' / '+s.combat.emax+' HP';$('enemyName').textContent=s.combat.name}}function townUI(){let q=clear('choiceEvent');q.append(E('h3',s.flags.debt?'Debt crisis active':'Town is quiet'));let l=clear('eventLog');s.logs.forEach(x=>l.append(E('div',x[0],'log-entry '+x[1])))}function skillsUI(){let q=clear('skillGrid');Object.keys(s.stats).forEach(k=>{let d=E('div',null,'skill-card');d.append(E('strong',k+' '+s.stats[k]),E('small',Math.floor(s.sx[k])+' / '+sn(k)+' XP'));q.append(d)})}function mapUI(){let x=$('worldMap').getContext('2d'),S=32;for(let y=0;y<10;y++)for(let i=0;i<16;i++){x.fillStyle=(i+y)%2?'#7da35d':'#759b57';x.fillRect(i*S,y*S,S,S)}x.fillStyle='#6c4e32';for(let i=0;i<6;i++)x.fillRect((1+i%3)*S+3,(1+Math.floor(i/3))*S+3,S-6,S-6);x.fillStyle='#8c493f';x.fillRect(9*S,S,3*S,3*S)}
+function render(){hud();farmUI();kitchenUI();restoUI();dungeonUI();townUI();skillsUI();mapUI()}function done(){debt();save();render()}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));t.classList.add('active');$(t.dataset.tab+'Panel').classList.add('active')});$('createRecipe').onclick=newRecipe;$('serveNow').onclick=()=>{if(serve())done()};$('enterDungeon').onclick=enter;$('attackBtn').onclick=attack;$('fleeBtn').onclick=flee;$('closeOffline').onclick=()=>$('offlineModal').classList.add('hidden');$('resetSave').onclick=()=>{if(confirm('Reset?')){localStorage.removeItem(K);s=F();D={};done()}};offline();render();setInterval(tick,1000);addEventListener('beforeunload',save);
