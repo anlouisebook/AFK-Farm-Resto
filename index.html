@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#1f2f24" />
+  <title>Hearth & Harvest AFK</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div><p class="eyebrow">AFK FARM × RESTAURANT RPG</p><h1>Hearth & Harvest</h1></div>
+      <div class="save-state" id="saveState">Autosaved</div>
+    </header>
+
+    <section class="hud" aria-label="Player status">
+      <div><span>LV</span><strong id="levelValue">1</strong></div>
+      <div><span>XP</span><strong id="xpValue">0 / 100</strong></div>
+      <div><span>Coins</span><strong id="coinsValue">120</strong></div>
+      <div><span>Energy</span><strong id="energyValue">25 / 25</strong></div>
+      <div><span>Reputation</span><strong id="repValue">50</strong></div>
+    </section>
+
+    <section class="world-card">
+      <canvas id="worldMap" width="512" height="320" aria-label="Top-down pixel map of farm, restaurant and dungeon"></canvas>
+      <div class="world-copy">
+        <h2>Your little corner of Bramblewick</h2>
+        <p>Grow crops, cook dishes, set a menu, then let the restaurant serve while you are away.</p>
+        <div class="pill-row">
+          <span>Town favor <b id="favorValue">0</b></span>
+          <span>Mira ♥ <b id="miraValue">0</b></span>
+          <span>Bram ♥ <b id="bramValue">0</b></span>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Game areas">
+      <button class="tab active" data-tab="farm">Farm</button>
+      <button class="tab" data-tab="kitchen">Kitchen</button>
+      <button class="tab" data-tab="restaurant">Restaurant</button>
+      <button class="tab" data-tab="dungeon">Dungeon</button>
+      <button class="tab" data-tab="town">Town</button>
+    </nav>
+
+    <section class="panel active" id="farmPanel">
+      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 01</p><h2>Farm</h2></div><p>Plant one crop per plot. Ready crops eventually wither if ignored.</p></div>
+      <div class="crop-picker" id="cropPicker"></div>
+      <div class="plot-grid" id="plotGrid"></div>
+      <h3>Crop inventory</h3><div class="inventory-grid" id="cropInventory"></div>
+    </section>
+
+    <section class="panel" id="kitchenPanel">
+      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 02</p><h2>Kitchen</h2></div><p>Cooking can fail. Higher Cooking improves success odds.</p></div>
+      <div class="card-grid" id="recipeGrid"></div>
+    </section>
+
+    <section class="panel" id="restaurantPanel">
+      <div class="section-heading"><div><p class="eyebrow">CORE LOOP 03</p><h2>Restaurant</h2></div><p>Choose up to 3 menu dishes and one staff setup. Service runs automatically, including offline.</p></div>
+      <div class="subpanel"><h3>Menu board <span id="menuCount">0 / 3</span></h3><div class="menu-grid" id="menuGrid"></div></div>
+      <div class="subpanel"><h3>Staff</h3><div class="staff-grid" id="staffGrid"></div></div>
+      <div class="restaurant-meter">
+        <div><span>Next customer</span><strong id="serviceTimer">—</strong></div>
+        <div><span>Total served</span><strong id="servedValue">0</strong></div>
+        <div><span>Debt risk</span><strong id="debtValue">Stable</strong></div>
+      </div>
+    </section>
+
+    <section class="panel" id="dungeonPanel">
+      <div class="section-heading"><div><p class="eyebrow">OPTIONAL RPG</p><h2>Rootcellar Ruins</h2></div><p>Fight for coins, XP, and rare spice. Farming and level improve attack; Energy limits runs.</p></div>
+      <div id="dungeonIdle" class="dungeon-stage">
+        <div class="pixel-monster slime" aria-hidden="true"></div>
+        <h3>Floor <span id="floorValue">1</span> awaits</h3>
+        <p>Entering costs 6 Energy. Losing has consequences: coins and reputation can drop.</p>
+        <button class="primary" id="enterDungeon">Enter dungeon</button>
+      </div>
+      <div id="combatStage" class="dungeon-stage hidden">
+        <div class="combatants">
+          <div><div class="pixel-hero"></div><strong>You</strong><span id="playerHp">20 / 20 HP</span></div>
+          <div><div class="pixel-monster slime"></div><strong id="enemyName">Moss Slime</strong><span id="enemyHp">10 / 10 HP</span></div>
+        </div>
+        <div class="combat-actions"><button class="primary" id="attackBtn">Attack</button><button id="fleeBtn">Flee</button></div>
+      </div>
+    </section>
+
+    <section class="panel" id="townPanel">
+      <div class="section-heading"><div><p class="eyebrow">CONSEQUENCES</p><h2>Bramblewick</h2></div><p>Some choices are permanent for this save. Relationships and town favor remember them.</p></div>
+      <div class="subpanel" id="choiceEvent"></div>
+      <h3>Consequence log</h3><div class="log" id="eventLog"></div>
+      <button class="danger-link" id="resetSave">Reset save</button>
+    </section>
+
+    <section class="stats-card">
+      <div class="section-heading compact"><div><p class="eyebrow">RPG STATS</p><h2>Skills</h2></div></div>
+      <div class="skill-grid" id="skillGrid"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop hidden" id="offlineModal">
+    <div class="modal"><p class="eyebrow">WELCOME BACK</p><h2>While you were away…</h2><div id="offlineSummary"></div><button class="primary" id="closeOffline">Collect & continue</button></div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
