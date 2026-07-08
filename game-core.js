@@ -1,6 +1,6 @@
 'use strict';
 
-/* YAGNI progression extension for the existing game.js */
+var P_DAY_SECONDS = 600;
 var P_UNLOCK = { farmer: 2, cook: 3, server: 4 };
 var P_HELPER_COST = { farmer: 180, cook: 220, server: 200 };
 var P_FARM_COST = { 2: 250, 3: 500 };
@@ -12,14 +12,47 @@ var P_OLD = {
   newRecipe: newRecipe,
   farmUI: farmUI,
   kitchenUI: kitchenUI,
-  restoUI: restoUI
+  restoUI: restoUI,
+  cook1: cook1,
+  serve: serve
 };
+
+function pMaxHelpers() {
+  return 1 + Math.floor(s.level / 5);
+}
+
+function pRollHelperLevel() {
+  return 1 + Math.floor(Math.random() * Math.max(1, Math.min(s.level, 10)));
+}
 
 function pInitState() {
   s.plan = Object.assign(Object.fromEntries(Object.keys(C).map(k => [k, 0])), s.plan || {});
   s.farmLevel = Math.max(1, Math.min(3, s.farmLevel || 1));
-  s.helperLevel = Object.assign({ farmer: 1, cook: 1, server: 1 }, s.helperLevel || {});
-  s.progressSeen = s.progressSeen || Date.now();
+  s.helpers = s.helpers || {};
+  s.helperCandidates = s.helperCandidates || {};
+  Object.keys(W).forEach(k => {
+    if (!Array.isArray(s.helpers[k])) {
+      s.helpers[k] = [];
+      if (s.workers[k]) {
+        s.helpers[k].push({
+          level: Math.max(1, Math.min(10, Number((s.helperLevel || {})[k]) || 1)),
+          progress: Math.max(0, Number((s.wp || {})[k]) || 0)
+        });
+      }
+    }
+    s.helpers[k] = s.helpers[k].map(h => ({
+      level: Math.max(1, Math.min(10, Number(h.level) || 1)),
+      progress: Math.max(0, Number(h.progress) || 0)
+    }));
+    s.workers[k] = s.helpers[k].length > 0;
+    var maxRoll = Math.max(1, Math.min(s.level, 10));
+    var candidate = Number(s.helperCandidates[k]) || 0;
+    if (candidate < 1 || candidate > maxRoll) s.helperCandidates[k] = pRollHelperLevel();
+  });
+  s.gameDay = Math.max(1, Number(s.gameDay) || 1);
+  s.dayProgress = Math.max(0, Math.min(P_DAY_SECONDS - 0.001, Number(s.dayProgress) || 0));
+  var captured = Number(sessionStorage.getItem('hh-afk-offline-start')) || 0;
+  s.progressSeen = captured || Number(s.progressSeen) || Date.now();
   pResizePlots();
 }
 
@@ -28,8 +61,29 @@ function pResizePlots() {
   while (s.plots.length < wanted) s.plots.push({ crop: null, at: 0, status: 'empty' });
 }
 
-function pInterval(k) {
-  return W[k][3] * (s.helperLevel[k] >= 2 ? 0.75 : 1);
+function pInterval(k, helper) {
+  var level = Math.max(1, Number(helper.level) || 1);
+  return W[k][3] / (1 + 0.25 * (level - 1));
+}
+
+function pDailyWage() {
+  return Object.keys(W).reduce((sum, k) => sum + s.helpers[k].length * W[k][2], 0);
+}
+
+function pAdvanceDay(sec) {
+  if (sec <= 0) return 0;
+  var total = s.dayProgress + sec;
+  var days = Math.floor(total / P_DAY_SECONDS);
+  s.dayProgress = total % P_DAY_SECONDS;
+  var wage = pDailyWage();
+  for (var i = 0; i < days; i++) {
+    s.gameDay++;
+    if (wage > 0) {
+      s.coins -= wage;
+      log('Day ' + s.gameDay + ' wages paid: ' + wage + 'c.', 'bad');
+    }
+  }
+  return days;
 }
 
 function pRecipeRules() {
@@ -56,16 +110,11 @@ function pPickCrop() {
 function pFarmJob(now) {
   grow(now || Date.now());
   var ready = s.plots.findIndex(p => p.status === 'ready');
-  if (ready >= 0) {
-    s.coins -= W.farmer[2];
-    return take(ready, 1, 1);
-  }
+  if (ready >= 0) return take(ready, 1, 1);
   var empty = s.plots.findIndex(p => p.status === 'empty');
   var crop = pPickCrop();
-  if (empty < 0 || !crop) return 0;
-  var cost = C[crop][1] + W.farmer[2];
-  if (s.coins < cost) return 0;
-  s.coins -= cost;
+  if (empty < 0 || !crop || s.coins < C[crop][1]) return 0;
+  s.coins -= C[crop][1];
   Object.assign(s.plots[empty], { crop: crop, at: now || Date.now(), status: 'growing' });
   return 1;
 }
@@ -82,26 +131,53 @@ take = function(i, auto, quiet) {
   return 1;
 };
 
-job = function(k) {
-  if (k === 'farmer') return pFarmJob(Date.now());
+cook1 = function(k, auto, quiet) {
+  var ok = P_OLD.cook1(k, auto, quiet);
+  if (auto && ok) s.coins += W.cook[2];
+  return ok;
+};
+
+serve = function(auto, quiet) {
+  var ok = P_OLD.serve(auto, quiet);
+  if (auto && ok) s.coins += W.server[2];
+  return ok;
+};
+
+function pDoJob(k, now) {
+  if (k === 'farmer') return pFarmJob(now || Date.now());
   return P_OLD.job(k);
+}
+
+job = function(k) {
+  return pDoJob(k, Date.now());
 };
 
 workers = function(dt) {
+  pAdvanceDay(dt);
   Object.keys(W).forEach(k => {
-    if (!s.workers[k]) return;
-    s.wp[k] += dt;
-    var interval = pInterval(k), guard = 0;
-    while (s.wp[k] >= interval && guard++ < 5) {
-      s.wp[k] -= interval;
-      job(k);
-    }
+    s.helpers[k].forEach(helper => {
+      helper.progress += dt;
+      var interval = pInterval(k, helper), guard = 0;
+      while (helper.progress >= interval && guard++ < 5) {
+        helper.progress -= interval;
+        pDoJob(k, Date.now());
+      }
+    });
   });
 };
 
 hire = function(k) {
   if (s.level < P_UNLOCK[k]) return toast('Unlocks at player level ' + P_UNLOCK[k] + '.');
-  return P_OLD.hire(k);
+  if (s.helpers[k].length >= pMaxHelpers()) return toast('Helper limit reached for this player level.');
+  var level = Number(s.helperCandidates[k]) || pRollHelperLevel();
+  var cost = W[k][1] * level;
+  if (s.coins < cost) return toast('Not enough coins.');
+  s.coins -= cost;
+  s.helpers[k].push({ level: level, progress: 0 });
+  s.workers[k] = true;
+  s.helperCandidates[k] = pRollHelperLevel();
+  log('Hired ' + W[k][0] + ' Lv ' + level + ' for ' + cost + 'c.', 'good');
+  done();
 };
 
 newRecipe = function() {
@@ -126,14 +202,16 @@ function pUpgradeFarm() {
   done();
 }
 
-function pUpgradeHelper(k) {
-  if (!s.workers[k]) return toast('Hire this helper first.');
-  if (s.helperLevel[k] >= 2) return;
-  if (s.level < 6) return toast('Helper level 2 unlocks at player level 6.');
-  var cost = P_HELPER_COST[k];
+function pUpgradeHelper(k, index) {
+  var helper = s.helpers[k][index];
+  if (!helper) return;
+  if (s.level < 6) return toast('Helper upgrades unlock at player level 6.');
+  var maxLevel = Math.min(s.level, 10);
+  if (helper.level >= maxLevel) return toast('This helper is at the current level cap.');
+  var cost = P_HELPER_COST[k] * helper.level;
   if (s.coins < cost) return toast('Not enough coins.');
   s.coins -= cost;
-  s.helperLevel[k] = 2;
-  log(W[k][0] + ' upgraded to level 2.', 'good');
+  helper.level++;
+  log(W[k][0] + ' #' + (index + 1) + ' upgraded to Lv ' + helper.level + '.', 'good');
   done();
 }
