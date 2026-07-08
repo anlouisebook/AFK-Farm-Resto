@@ -46,7 +46,7 @@
     <section class="panel active" id="farmPanel">
       <div class="section-heading">
         <div><p class="eyebrow">CORE LOOP 01</p><h2>Farm</h2></div>
-        <p>Plant crops manually. A hired Farmhand harvests ready crops automatically, including offline.</p>
+        <p>Plant crops manually. Hired Farmhands plant toward your targets and harvest ready crops.</p>
       </div>
       <div class="crop-picker" id="cropPicker"></div>
       <div class="plot-grid" id="plotGrid"></div>
@@ -57,7 +57,7 @@
     <section class="panel" id="kitchenPanel">
       <div class="section-heading">
         <div><p class="eyebrow">CORE LOOP 02</p><h2>Kitchen</h2></div>
-        <p>Cook known dishes or invent your own. A hired Cook repeats one selected recipe automatically.</p>
+        <p>Cook known dishes or invent your own. Hired Cooks repeat one selected recipe automatically.</p>
       </div>
 
       <div class="subpanel">
@@ -79,7 +79,7 @@
         <h3>Cook worker target</h3>
         <div class="action-row">
           <select id="autoRecipeSelect" aria-label="Recipe for cook worker"></select>
-          <small class="muted-copy">Used only after hiring the Cook.</small>
+          <small class="muted-copy">Used by all hired Cooks.</small>
         </div>
       </div>
 
@@ -89,7 +89,7 @@
     <section class="panel" id="restaurantPanel">
       <div class="section-heading">
         <div><p class="eyebrow">CORE LOOP 03</p><h2>Restaurant</h2></div>
-        <p>Choose up to 3 dishes. Hire dedicated workers for auto-harvest, auto-cook, and auto-serve.</p>
+        <p>Choose up to 3 dishes. Hire multiple Farmhands, Cooks, and Servers as your player level grows.</p>
       </div>
       <div class="subpanel">
         <div class="action-row">
@@ -100,11 +100,11 @@
       </div>
       <div class="subpanel">
         <h3>Workers</h3>
-        <p class="muted-copy">Each worker has a one-time hire cost and a wage paid only when a job is performed.</p>
+        <p class="muted-copy">Each helper has an individual level. Wages are charged once per 10-minute in-game day.</p>
         <div class="worker-grid" id="workerGrid"></div>
       </div>
       <div class="restaurant-meter">
-        <div><span>Next auto-service</span><strong id="serviceTimer">Manual only</strong></div>
+        <div><span>Servers</span><strong id="serviceTimer">Manual only</strong></div>
         <div><span>Total served</span><strong id="servedValue">0</strong></div>
         <div><span>Debt risk</span><strong id="debtValue">Stable</strong></div>
       </div>
@@ -157,6 +157,7 @@
     </div>
   </div>
 
+  <script src="game-ui-b3.js"></script>
   <script src="game.js"></script>
   <script src="game-core.js"></script>
   <script src="game-systems.js"></script>
